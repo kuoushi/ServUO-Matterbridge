@@ -252,8 +252,8 @@ namespace Server.Custom
 		{
 
 			if (matterbridgeConfig.SimpleMessages)
-				return from.Name + " (" + source + "): " + message;
-			return "<" + from.Serial.Value + ">" + from.Name + " (" + from.Account.Username + ") | " + source + " | " + message;
+				return from.Name + " | " + source + ": " + message;
+			return "<" + from.Serial.Value + ">" + from.Name + " (" + from.Account.Username + ") | " + source + ": " + message;
 		}
 	}
 }
