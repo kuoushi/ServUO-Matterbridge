@@ -1,0 +1,23 @@
+[discord]
+	[discord.Bot]
+	Token="YOURTOKENGOESHERE"
+	Server="YOUR SERVER NAME GOES HERE"
+
+[api]
+	[api.servuo]
+	BindAddress="127.0.0.1:27045"
+	Buffer=1000
+	RemoteNickFormat="{NICK}"
+	Token="secretTok3n"
+
+[[gateway]]
+name="servuo-gateway"
+enable=true
+
+	[[gateway.inout]]
+	account="discord.Bot"
+	channel="YOUR CHANNEL NAME GOES HERE"
+
+	[[gateway.inout]]
+	account="api.servuo"
+	channel="api"
