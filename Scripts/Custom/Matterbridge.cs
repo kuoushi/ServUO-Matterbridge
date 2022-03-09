@@ -149,23 +149,27 @@ namespace Server.Custom
 			matterbridgeClient = RestService.For<IMatterbridgeClient>(matterbridgeConfig.TargetUri, new RefitSettings { ContentSerializer = new SystemTextJsonContentSerializer(options) });
 
 			if (matterbridgeConfig.IncludeWorldChat)
-				EventSink.Speech += EventSink_Speech;
-
-			if (matterbridgeConfig.ChatChannel != "*")
 			{
-				Channel.AddStaticChannel(matterbridgeConfig.ChatChannel);
-				if (matterbridgeConfig.AutoJoinChatChannel)
-				{
-					EventSink.Login += EventSink_JoinDefaultChannelAtLogin;
+				EventSink.Speech += EventSink_Speech;
+			}
 
-					// quietly ignore General channel join attempt on player login for 5 seconds
-					// ClassicUO client sends a join request when entering the game, but we want players in our channel
-					ChatActionHandlers.Register(0x62, false, new OnChatAction(BlockGeneralAtLogin));
+			if (!IsRconPacketHandlersEnabled())
+            {
+				if (matterbridgeConfig.ChatChannel != "*")
+				{
+					Channel.AddStaticChannel(matterbridgeConfig.ChatChannel);
+					if (matterbridgeConfig.AutoJoinChatChannel)
+					{
+						EventSink.Login += EventSink_JoinDefaultChannelAtLogin;
+
+						// quietly ignore General channel join attempt on player login for 5 seconds
+						// ClassicUO client sends a join request when entering the game, but we want players in our channel
+						ChatActionHandlers.Register(0x62, false, new OnChatAction(BlockGeneralAtLogin));
+					}
 				}
 			}
 
 			ChatActionHandlers.Register(0x61, true, new OnChatAction(OnServUOChatReceived));
-
 			Listen();
 		}
 
@@ -240,12 +244,35 @@ namespace Server.Custom
 
 		private static void OnServUOChatReceived(ChatUser from, Channel channel, string param)
 		{
-			ChatActionHandlers.ChannelMessage(from, channel, param);
-			Console.WriteLine("{0} - {1}: {2}", channel.Name, matterbridgeConfig.ChatChannel, param);
+			if (IsRconPacketHandlersEnabled())
+			{
+				RconPacketHandlersRelayChatPacket(from, channel, param);
+			}
+			else
+			{
+				ChatActionHandlers.ChannelMessage(from, channel, param);
+			}
+
 			if (channel.Name == matterbridgeConfig.ChatChannel || matterbridgeConfig.ChatChannel == "*")
 			{
 				matterbridgeClient.PostMessage(matterbridgeConfig.TargetToken, new MatterbridgePostMessage(matterbridgeConfig.TargetGateway, from.Mobile.Name, FormatMessageForMatterbridge(from.Mobile, channel.Name, param)));
 			}
+		}
+
+		private static bool IsRconPacketHandlersEnabled()
+		{
+			var rconPacketHandlersClass = Type.GetType("Server.RemoteAdmin.RconPacketHandlers");
+			if (rconPacketHandlersClass != null)
+				return true;
+			return false;
+		}
+
+		private static void RconPacketHandlersRelayChatPacket(ChatUser from, Channel channel, string param)
+		{
+			var rconPacketHandlersClass = Type.GetType("Server.RemoteAdmin.RconPacketHandlers");
+			var m = rconPacketHandlersClass.GetMethod("RelayChatPacket");
+			object[] parameters = {from, channel, param};
+			m.Invoke(rconPacketHandlersClass, parameters);
 		}
 
 		public static string FormatMessageForMatterbridge(Mobile from, string source, string message)
