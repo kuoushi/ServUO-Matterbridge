@@ -18,26 +18,16 @@ namespace Server.Custom
 		Task PostMessage([Authorize("Bearer")] string token, [Refit.Body] MatterbridgePostMessage message);
 	}
 	
-	public class MatterbridgeMessage
+	public class MatterbridgeMessage : MatterbridgePostMessage
 	{
-		[JsonPropertyName("text")]
-		public string Text { get; set; }
 		[JsonPropertyName("channel")]
 		public string Channel { get; set; }
-		[JsonPropertyName("username")]
-		public string Username { get; set; }
 		[JsonPropertyName("userid")]
 		public string UserId { get; set; }
-		[JsonPropertyName("avatar")]
-		public string Avatar { get; set; }
 		[JsonPropertyName("account")]
 		public string Account { get; set; }
-		[JsonPropertyName("event")]
-		public string Event { get; set; }
 		[JsonPropertyName("protocol")]
 		public string Protocol { get; set; }
-		[JsonPropertyName("gateway")]
-		public string Gateway { get; set; }
 		[JsonPropertyName("parent_id")]
 		public string ParentId { get; set; }
 		[JsonPropertyName("timestamp")]
@@ -46,6 +36,10 @@ namespace Server.Custom
 		public string Id { get; set; }
 		[JsonPropertyName("extra")]
 		public object Extra { get; set; }
+		public MatterbridgeMessage(string gateway, string username, string text) : base(gateway, username, text)
+		{
+			
+		}
 		public override string ToString()
 		{
 			return "[" + Protocol + "] " + Channel + " | " + Username + ": " + Text;
@@ -85,9 +79,9 @@ namespace Server.Custom
 		public int TargetPort => Int32.Parse(m_Vars["TargetPort"]);
 		public string TargetUri => "http://" + m_Vars["TargetAddress"] + ":" + m_Vars["TargetPort"];
 		public string ChatChannel => m_Vars["ChatChannel"];
+		public string CustomFormat => m_Vars["MessageFormat"];
 		public bool AutoJoinChatChannel => IsBooleanKeyEnabled("AutoJoinChatChannel");
 		public bool IncludeWorldChat => IsBooleanKeyEnabled("IncludeWorldChat");
-		public bool SimpleMessages => IsBooleanKeyEnabled("SimpleMessages");
 
 		private Dictionary<string, string> m_Vars;
 
@@ -118,7 +112,7 @@ namespace Server.Custom
 			}
 			else
 			{
-				throw new Exception("RconConfig.cfg file is missing.");
+				throw new Exception("MatterbridgeConfig.cfg file is missing.");
 			}
 		}
 
@@ -135,10 +129,13 @@ namespace Server.Custom
 
 		private static IMatterbridgeClient matterbridgeClient;
 		private static MatterbridgeConfig matterbridgeConfig;
+		// private static Dictionary<string, string> m_Tags;
 
 		public static void Configure()
 		{
 			matterbridgeConfig = new MatterbridgeConfig("MatterbridgeConfig.cfg");
+			// m_Tags = new Dictionary<string, string>();
+			// m_Tags.Add();
 
 			var options = new JsonSerializerOptions()
 			{
@@ -203,7 +200,7 @@ namespace Server.Custom
 			Mobile from = e.Mobile;
 			if (from is Mobiles.PlayerMobile)
 			{
-				matterbridgeClient.PostMessage(matterbridgeConfig.TargetToken, new MatterbridgePostMessage(matterbridgeConfig.TargetGateway, from.Name, FormatMessageForMatterbridge(from, from.Region.Name + " (" + from.Location.X + "," + from.Location.Y + "," + from.Location.Z + ")", e.Speech)));
+				matterbridgeClient.PostMessage(matterbridgeConfig.TargetToken, FormatMatterbridgeMessage(null, from, e.Speech));
 			}
 		}
 
@@ -255,7 +252,7 @@ namespace Server.Custom
 
 			if (channel.Name == matterbridgeConfig.ChatChannel || matterbridgeConfig.ChatChannel == "*")
 			{
-				matterbridgeClient.PostMessage(matterbridgeConfig.TargetToken, new MatterbridgePostMessage(matterbridgeConfig.TargetGateway, from.Mobile.Name, FormatMessageForMatterbridge(from.Mobile, channel.Name, param)));
+				matterbridgeClient.PostMessage(matterbridgeConfig.TargetToken, FormatMatterbridgeMessage(null, from.Mobile, param, channel));
 			}
 		}
 
@@ -275,12 +272,40 @@ namespace Server.Custom
 			m.Invoke(rconPacketHandlersClass, parameters);
 		}
 
-		public static string FormatMessageForMatterbridge(Mobile from, string source, string message)
+		public static MatterbridgePostMessage FormatMatterbridgeMessage(string type, Mobile from, string message = null, Channel channel = null)
 		{
-
-			if (matterbridgeConfig.SimpleMessages)
-				return from.Name + " | " + source + ": " + message;
-			return "<" + from.Serial.Value + ">" + from.Name + " (" + from.Account.Username + ") | " + source + ": " + message;
+			var t = matterbridgeConfig.CustomFormat;
+			if (message != null)
+			{
+				t = t.Replace("{name}", from.Name).Replace("{message}", message).Replace("{account}", from.Account.Username).Replace("{serial}", from.Serial.Value.ToString()).Replace("{region}", from.Region.Name).Replace("{coords.x}", from.X.ToString()).Replace("{coords.y}", from.Y.ToString()).Replace("{coords.z}", from.Z.ToString()).Replace("{ip}", from.NetState.Address.ToString());
+				if (from.Guild != null)
+					t = t.Replace("{guild}", " (" + from.Guild.Name + ")");
+				else
+					t = t.Replace("{guild}", string.Empty);
+				if (!from.Alive)
+					t = t.Replace("{dead}", " <Dead>");
+				else
+					t = t.Replace("{dead}", string.Empty);
+				if (from.Account.Young)
+					t = t.Replace("{young}", " <Young>");
+				else
+					t = t.Replace("{young}", string.Empty);
+				if (from.Criminal)
+					t = t.Replace("{criminal}", " <Criminal>");
+				else
+					t = t.Replace("{criminal}", string.Empty);
+				if (from.Murderer)
+					t = t.Replace(" {murderer}", " <Murderer>");
+				else
+					t = t.Replace("{murderer}", string.Empty);
+				if (channel == null)
+					t = t.Replace("{channel}", "World");
+				else
+					t = t.Replace("{channel}", channel.Name);
+				if (t.Contains("{coords}"))
+					t = t.Replace("{coords}", from.X + "," + from.Y + "," + from.Z);
+			}
+			return new MatterbridgePostMessage(matterbridgeConfig.TargetGateway, from.Name, t);
 		}
 	}
 }
